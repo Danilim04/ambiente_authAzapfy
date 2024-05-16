@@ -1,0 +1,127 @@
+version: "3.9"
+services:
+
+  back-azapfy:
+    container_name: back-azapfy
+    restart: unless-stopped
+    build:
+      context: ./
+      dockerfile: docker-images/php/dockerfile
+      args:
+        PHP_VERSION: '7.4.33-fpm'
+        workDir: /var/www/backDev3
+        dirApp: ../../Codigos/backDev3
+        entrypoint: docker-images/php/entrypoints/entrypoint-backDev3.sh
+        supervisordDir: ./docker/supervisord/supervisord-backDev3.conf
+    volumes:
+      - ./Codigos/backDev3:/var/www/backDev3/
+      - /var/www/backDev3/vendor/
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 100M
+    networks:
+      - azapNet
+
+  nginx:
+    container_name: Nginx-authserve
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Codigos:/var/www/ # Mapear os codigos
+      - ./docker/nginx/:/etc/nginx/conf.d/ # Volume arquivo de Config
+    deploy:
+      resources:
+        limits:
+          memory: 100M
+        reservations:
+          memory: 20M
+    networks:
+      - azapNet
+
+  front:
+    container_name: front
+    build:
+      context: ./
+      dockerfile: docker-images/node/dockerfile
+      args:
+        user: azapfy
+        uid: 1001
+    tty: true
+    # ports:
+    #   - 3000:3000
+    volumes:
+      - ./Codigos/front:/var/www/front
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 300M
+    networks:
+      - azapNet
+
+  auth_rust_server: &auth_rust_server
+    container_name: auth
+    build:
+      context: ./
+      dockerfile: docker-images/auth-azapfy/dockerfile
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MONGO_HOST: db-homologacao.azapfy.com.br
+      MONGO_PORT: 1434
+      MONGO_USER: auth-azapfy
+      MONGO_PASS: Super@Azapers133
+      APP_PORT: 8000
+      AUTH_SOURCE: false
+    restart: 'always'
+    deploy:
+      resources:
+        limits:
+          memory: 40M
+        reservations:
+          memory: 20M
+    networks:
+      - azapNet
+    ports:
+      - 8000:8000
+    depends_on:
+      - redis
+
+  # auth_rust_server2:
+  #   <<: *auth_rust_server
+  #   container_name: auth2
+  #   environment:
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     MONGO_HOST: db-homologacao.azapfy.com.br
+  #     MONGO_PORT: 1434
+  #     MONGO_USER: auth-azapfy
+  #     MONGO_PASS: Super@Azapers133
+  #     APP_PORT: 8000
+  #     AUTH_SOURCE: false
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    networks:
+      - azapNet
+    ports:
+      - 6379:6379
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+    volumes:
+      - redis_auth_service:/data
+
+volumes:
+  redis_auth_service:
+
+
+networks:
+  azapNet:
+    driver: bridge
